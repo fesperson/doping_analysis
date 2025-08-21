@@ -1,0 +1,101 @@
+---
+title: "athletes_doping"
+output: html_document
+date: "2025-08-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+First we will scrape a list of the all time best ~1000 marathon results
+
+```{r}
+library(rvest)
+library(dplyr)
+library(RColorBrewer)
+```
+
+
+```{r}
+getPage <- function(url) {
+  webpage <- read_html(url)
+  
+  table_node <- html_nodes(webpage, "table.records-table")
+  
+  rankings_table <- html_table(table_node[[1]])
+  colnames(rankings_table) <- tolower(gsub("[ /]", "_", colnames(rankings_table)))
+  rankings_table
+}
+```
+
+Get the first 1000 results
+```{r}
+
+initial_table <- data.frame()
+
+for (n in 1:10) {
+  url <- paste("https://worldathletics.org/records/all-time-toplists/road-running/marathon/all/men/senior?regionType=world&page=", toString(n),  "&bestResultsOnly=false&firstDay=1900-01-01&lastDay=2025-08-21&maxResultsByCountry=all&eventId=10229634&ageCategory=senior", sep="")
+  
+  initial_table <- rbind(initial_table, getPage(url))
+}
+
+head(initial_table )
+```
+
+Fix column names
+```{r}
+
+
+
+table <- subset(initial_table, select = -c(3,8))
+
+names(table)[5] <- "nationality"
+```
+
+```{r}
+head(table)
+```
+
+
+Let's have a quick look at how many of those times were run each year
+```{r}
+library(ggplot2)
+```
+
+```{r}
+library(lubridate)
+table$time <- hms(table$mark)
+table$year <- year(dmy(table$date))
+table$month <- month(dmy(table$date))
+table$new_date <- dmy(table$date)
+```
+
+Now we can plot the number of top 1000 runs that ocurred each year
+```{r}
+ggplot(table, aes(x=year)) + geom_bar() + ylab("Number of top 1000 runs") + geom_vline(xintercept=2017, color="red") + annotate("text", x = 2016, y=70, label="Vaporfly Released", color="red", angle=90)
+```
+```{r}
+# lets aggregate by month/year
+grp_by_nationality = table %>% group_by(nationality) %>% summarise(run_count = n())
+
+nation_order <- grp_by_nationality[order(-grp_by_nationality$run_count),]
+
+
+the_rest_count <- sum(nation_order[3:nrow(nation_order), 2])
+
+top2 <- nation_order[1:2,]
+top2 <- rbind(top2, c("other", the_rest_count))
+top2$run_count <- as.integer(top2$run_count)
+
+top2$name <- c("Kenya", "Ethiopia", "All other countries")
+ggplot(top2, aes(x=reorder(name, -run_count), y=run_count, fill=nationality)) +
+  labs(title = "Total marathon times in the top 1000 by country",
+       y = "Number of runs in the top 1000",
+       x = "Nationality") +
+  geom_col() +
+  scale_fill_brewer(palette = "Set2") 
+  
+```
+
+
